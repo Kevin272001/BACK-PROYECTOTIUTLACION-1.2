@@ -31,6 +31,47 @@ module.exports = {
   },
 
   // =====================================================
+  // ✅ NUEVO: OBTENER SERVICIO POR ID (para Flutter "Ver perfil")
+  // GET /api/servicios/:id
+  // =====================================================
+  async obtenerPorId(req, res) {
+    try {
+      const id = Number(req.params.id);
+      if (!id) return res.status(400).json({ error: "ID inválido" });
+
+      const servicio = await Servicio.findByPk(id, {
+        // traemos también el userId (dueño = trabajador)
+        attributes: [
+          "id",
+          "titulo",
+          "categoria",
+          "descripcion",
+          "ubicacion",
+          "presupuesto",
+          "estado",
+          "userId",
+          "createdAt",
+          "updatedAt",
+        ],
+      });
+
+      if (!servicio) {
+        return res.status(404).json({ error: "Servicio no existe" });
+      }
+
+      // ✅ Devolvemos trabajadorId para que Flutter lo detecte sí o sí
+      return res.json({
+        ok: true,
+        servicio,
+        trabajadorId: servicio.userId, // dueño del servicio
+      });
+    } catch (error) {
+      console.error("❌ Error obtenerPorId:", error);
+      return res.status(500).json({ error: "Error obteniendo el servicio" });
+    }
+  },
+
+  // =====================================================
   // 📄 LISTAR SERVICIOS
   // GET /api/servicios
   // GET /api/servicios?userId=123

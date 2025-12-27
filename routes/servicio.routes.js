@@ -25,6 +25,10 @@ router.get("/", servicioCtrl.listar);
 // Mis servicios del trabajador + postulaciones (activos + <24h)
 router.get("/mis/:userId", servicioCtrl.listarMisServicios);
 
+// ✅ NUEVO: Obtener servicio por ID (para Flutter "Ver perfil")
+// GET /api/servicios/:id
+router.get("/:id", servicioCtrl.obtenerPorId);
+
 // Editar servicio
 router.put("/:id", servicioCtrl.editar);
 
