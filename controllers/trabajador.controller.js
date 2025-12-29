@@ -1,7 +1,8 @@
-const { User, Trabajador } = require('../models');
+"use strict";
+
+const { User, Trabajador, PerfilLaboral } = require("../models");
 
 module.exports = {
-
   // =====================================================
   // OBTENER TRABAJADOR POR userId
   // =====================================================
@@ -12,18 +13,20 @@ module.exports = {
       const trabajador = await Trabajador.findOne({
         where: { userId },
         include: [
-          { model: User, as: 'usuario', attributes: ['id', 'nombre', 'email', 'rol'] }
-        ]
+          { model: User, as: "usuario", attributes: ["id", "nombre", "email", "rol"] },
+          // Si tienes PerfilLaboral asociado al trabajador, lo puedes incluir:
+          // { model: PerfilLaboral, as: "perfilLaboral" },
+        ],
       });
 
       if (!trabajador) {
         return res.status(404).json({ error: "El trabajador no existe." });
       }
 
-      res.json(trabajador);
+      return res.json(trabajador);
     } catch (error) {
       console.error("Error obtener trabajador:", error);
-      res.status(500).json({ error: "Error interno al obtener el trabajador." });
+      return res.status(500).json({ error: "Error interno al obtener el trabajador." });
     }
   },
 
@@ -51,13 +54,13 @@ module.exports = {
         descripcion,
         horario,
         fotoPerfil,
-        userId
+        userId,
       });
 
-      res.status(201).json({ mensaje: "Trabajador creado correctamente", trabajador });
+      return res.status(201).json({ mensaje: "Trabajador creado correctamente", trabajador });
     } catch (error) {
       console.error("Error crear trabajador:", error);
-      res.status(500).json({ error: "Error interno al crear trabajador." });
+      return res.status(500).json({ error: "Error interno al crear trabajador." });
     }
   },
 
@@ -70,20 +73,19 @@ module.exports = {
       const datos = req.body;
 
       const trabajador = await Trabajador.findOne({ where: { userId } });
-
       if (!trabajador) {
         return res.status(404).json({ error: "El trabajador no existe." });
       }
 
       await trabajador.update(datos);
 
-      res.json({
+      return res.json({
         mensaje: "Trabajador actualizado correctamente",
-        trabajador
+        trabajador,
       });
     } catch (error) {
       console.error("Error actualizar trabajador:", error);
-      res.status(500).json({ error: "Error interno al actualizar trabajador." });
+      return res.status(500).json({ error: "Error interno al actualizar trabajador." });
     }
   },
 
@@ -95,66 +97,75 @@ module.exports = {
       const { userId } = req.params;
 
       const trabajador = await Trabajador.findOne({ where: { userId } });
-
       if (!trabajador) {
         return res.status(404).json({ error: "El trabajador no existe." });
       }
 
       await trabajador.destroy();
 
-      res.json({ mensaje: "Perfil de trabajador eliminado correctamente." });
+      return res.json({ mensaje: "Perfil de trabajador eliminado correctamente." });
     } catch (error) {
       console.error("Error eliminar trabajador:", error);
-      res.status(500).json({ error: "Error interno al eliminar trabajador." });
+      return res.status(500).json({ error: "Error interno al eliminar trabajador." });
     }
   },
 
   // =====================================================
-  // LISTAR TODOS LOS TRABAJADORES
+  // LISTAR TODOS LOS TRABAJADORES (con usuario)
   // =====================================================
   async listar(req, res) {
     try {
       const trabajadores = await Trabajador.findAll({
-        include: [
-          { model: User, as: 'usuario', attributes: ['id', 'nombre', 'email', 'rol'] }
-        ]
+        include: [{ model: User, as: "usuario", attributes: ["id", "nombre", "email", "rol"] }],
       });
 
-      res.json(trabajadores);
+      return res.json(trabajadores);
     } catch (error) {
       console.error("Error listar trabajadores:", error);
-      res.status(500).json({ error: "Error interno al listar trabajadores." });
+      return res.status(500).json({ error: "Error interno al listar trabajadores." });
     }
-  }
+  },
 
-};
-////
-const { trabajador, user, perfilLaboral } = require("../models");
+  // =====================================================
+  // BUSCAR PERFILES (lo que usa tu pantalla BuscarPerfiles)
+  // ✅ Devuelve nombre/email en RAÍZ para que Flutter use t.nombre y t.email
+  // =====================================================
+  async buscarPerfiles(req, res) {
+    try {
+      const { categoria, experiencia } = req.query;
 
-module.exports.buscarPerfiles = async (req, res) => {
-  try {
-    const { categoria, experiencia } = req.query;
+      const where = {};
+      if (categoria) where.categoria = categoria;
+      if (experiencia) where.experiencia = experiencia;
 
-    const where = {};
-    if (categoria) where.categoria = categoria;
-    if (experiencia) where.experiencia = experiencia;
+      const trabajadores = await Trabajador.findAll({
+        where,
+        include: [
+          {
+            model: User,
+            as: "usuario", // ✅ IMPORTANTE: tu relación usa alias "usuario"
+            attributes: ["id", "nombre", "email", "rol"],
+          },
+          // Si existe esta relación en tu proyecto, la puedes dejar:
+          // { model: PerfilLaboral, as: "perfilLaboral", required: false },
+        ],
+        order: [["createdAt", "DESC"]],
+      });
 
-    const trabajadores = await trabajador.findAll({
-      where,
-      include: [
-        {
-          model: user,
-          attributes: ["id", "nombre", "email"]
-        },
-        {
-          model: perfilLaboral
-        }
-      ]
-    });
+      // ✅ Flatten: nombre/email también arriba (para tu Flutter actual)
+      const data = trabajadores.map((t) => {
+        const plain = t.get({ plain: true });
+        return {
+          ...plain,
+          nombre: plain.usuario?.nombre || "",
+          email: plain.usuario?.email || "",
+        };
+      });
 
-    res.json(trabajadores);
-  } catch (error) {
-    console.error("❌ Error buscar perfiles:", error);
-    res.status(500).json({ mensaje: "Error al buscar perfiles" });
-  }
+      return res.json(data);
+    } catch (error) {
+      console.error("❌ Error buscar perfiles:", error);
+      return res.status(500).json({ mensaje: "Error al buscar perfiles" });
+    }
+  },
 };
