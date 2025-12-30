@@ -73,11 +73,7 @@ function readExperience(obj) {
   ];
 
   for (const k of keys) {
-    if (
-      obj[k] !== undefined &&
-      obj[k] !== null &&
-      String(obj[k]).trim() !== ""
-    ) {
+    if (obj[k] !== undefined && obj[k] !== null && String(obj[k]).trim() !== "") {
       return years(obj[k], 0);
     }
   }
@@ -105,8 +101,8 @@ function buildPerfil({ u, t, pl }) {
     pick(t || {}, ["categoria", "profesion", "oficio", "category"], "");
 
   const telefono =
-    pick(t || {}, ["telefono", "celular", "phone"], "") ||
-    pick(pl || {}, ["telefono", "celular", "phone"], "");
+    pick(t || {}, ["telefono", "celular", "movil", "phone"], "") ||
+    pick(pl || {}, ["telefono", "celular", "movil", "phone"], "");
 
   const expT = readExperience(t);
   const expPL = readExperience(pl);
@@ -132,6 +128,11 @@ function buildPerfil({ u, t, pl }) {
     pick(t || {}, ["cvUrl", "cv", "archivoCv", "cvPdfUrl", "pdfCv", "urlCv"], "") ||
     pick(pl || {}, ["cvUrl", "cv", "archivoCv", "cvPdfUrl", "pdfCv", "urlCv"], "");
 
+  // ✅ NUEVO: Récord Policial
+  const recordPolicialUrl =
+    pick(pl || {}, ["recordPolicialUrl", "record_policial_url", "recordPolicial", "record"], "") ||
+    pick(t || {}, ["recordPolicialUrl", "record_policial_url", "recordPolicial", "record"], "");
+
   const descripcion =
     pick(t || {}, ["descripcion", "bio"], "") ||
     pick(pl || {}, ["descripcion", "bio"], "");
@@ -154,17 +155,49 @@ function buildPerfil({ u, t, pl }) {
     fotoPerfil: fotoUrl ?? "",
     cvUrl: cvUrl ?? "",
 
+    // ✅ AQUÍ SE DEVUELVE AL FRONT
+    recordPolicialUrl: recordPolicialUrl ?? "",
+
     descripcion,
     horario,
 
-    // ✅ compat flutter (anidado)
+    // ✅ compat flutter
     usuario: u ? { id: u.id, nombre: u.nombre, email: u.email, rol: u.rol } : null,
 
-    // ✅ compat flutter (plano)
+    // extras por compat
     nombre: u?.nombre ?? "",
     email: u?.email ?? "",
     rol: u?.rol ?? "",
   };
+}
+
+function getUserFromTrabajador(t) {
+  if (!t) return null;
+  if (USER_ASSOC) return t[USER_ASSOC.as] || null;
+  // fallbacks por si acaso
+  return t.user || t.User || null;
+}
+
+function getIncludeUser() {
+  if (USER_ASSOC) {
+    return [
+      {
+        association: USER_ASSOC,
+        attributes: ["id", "nombre", "email", "rol"],
+        required: false,
+      },
+    ];
+  }
+
+  // fallback si no se detectó asociación (raro)
+  return [
+    {
+      model: User,
+      as: "user",
+      attributes: ["id", "nombre", "email", "rol"],
+      required: false,
+    },
+  ];
 }
 
 // ============================================================
@@ -174,27 +207,13 @@ function buildPerfil({ u, t, pl }) {
 router.get("/", async (req, res) => {
   try {
     const rows = await Trabajador.findAll({
-      include: USER_ASSOC
-        ? [
-            {
-              association: USER_ASSOC,
-              attributes: ["id", "nombre", "email", "rol"],
-              required: false,
-            },
-          ]
-        : [
-            {
-              model: User,
-              attributes: ["id", "nombre", "email", "rol"],
-              required: false,
-            },
-          ],
+      include: getIncludeUser(),
       order: [["updatedAt", "DESC"]],
       limit: 200,
     });
 
     const salida = rows.map((t) => {
-      const u = USER_ASSOC ? t[USER_ASSOC.as] : t.User;
+      const u = getUserFromTrabajador(t);
       return buildPerfil({ u, t, pl: null });
     });
 
@@ -219,9 +238,7 @@ router.get("/buscar", async (req, res) => {
 
     const categoriaQ = s(categoria, "").trim();
     const expNum =
-      experiencia !== undefined &&
-      experiencia !== null &&
-      String(experiencia).trim() !== ""
+      experiencia !== undefined && experiencia !== null && String(experiencia).trim() !== ""
         ? years(experiencia, 0)
         : null;
 
@@ -248,7 +265,11 @@ router.get("/buscar", async (req, res) => {
       const trabajadorIds = perfiles.map((p) => p.trabajadorId).filter(Boolean);
 
       if (userIds.length === 0 && trabajadorIds.length === 0) {
-        return res.json({ ok: true, message: "Perfiles encontrados correctamente.", trabajadores: [] });
+        return res.json({
+          ok: true,
+          message: "Perfiles encontrados correctamente.",
+          trabajadores: [],
+        });
       }
 
       let trabajadoresById = [];
@@ -263,7 +284,11 @@ router.get("/buscar", async (req, res) => {
         userIds.length > 0 ? userIds : trabajadoresById.map((t) => t.userId).filter(Boolean);
 
       if (userIdsFinal.length === 0) {
-        return res.json({ ok: true, message: "Perfiles encontrados correctamente.", trabajadores: [] });
+        return res.json({
+          ok: true,
+          message: "Perfiles encontrados correctamente.",
+          trabajadores: [],
+        });
       }
 
       const [users, trabajadores] = await Promise.all([
@@ -294,28 +319,18 @@ router.get("/buscar", async (req, res) => {
         })
         .filter(Boolean);
 
-      return res.json({ ok: true, message: "Perfiles encontrados correctamente.", trabajadores: salida });
+      return res.json({
+        ok: true,
+        message: "Perfiles encontrados correctamente.",
+        trabajadores: salida,
+      });
     }
 
     // =========================================================
     // 2) Sin filtros: traer trabajadores + user (por asociación)
     // =========================================================
     const trabajadoresBase = await Trabajador.findAll({
-      include: USER_ASSOC
-        ? [
-            {
-              association: USER_ASSOC,
-              attributes: ["id", "nombre", "email", "rol"],
-              required: false,
-            },
-          ]
-        : [
-            {
-              model: User,
-              attributes: ["id", "nombre", "email", "rol"],
-              required: false,
-            },
-          ],
+      include: getIncludeUser(),
       limit: 200,
       order: [["updatedAt", "DESC"]],
     });
@@ -348,7 +363,7 @@ router.get("/buscar", async (req, res) => {
 
     const salida = trabajadoresBase.map((t) => {
       const tPlain = plain(t);
-      const u = USER_ASSOC ? plain(t[USER_ASSOC.as]) : plain(t.User);
+      const u = plain(getUserFromTrabajador(t));
       const pl = plUserMap.get(tPlain.userId) || plTrabMap.get(tPlain.id) || null;
       return buildPerfil({ u, t: tPlain, pl });
     });
@@ -406,7 +421,25 @@ router.get("/publico/:userId", async (req, res) => {
 
     const perfil = buildPerfil({ u: user, t: trabajador || null, pl: perfilLaboral || null });
 
-    return res.json({ ok: true, perfil });
+    const debug = String(req.query.debug || "") === "1";
+
+    return res.json({
+      ok: true,
+      perfil: {
+        ...perfil,
+        ...(debug
+          ? {
+              _debugExp: {
+                trabajador: trabajador ? { id: trabajador.id, experiencia: trabajador.experiencia } : null,
+                perfilLaboral: perfilLaboral ? { id: perfilLaboral.id, experiencia: perfilLaboral.experiencia } : null,
+                expT: readExperience(trabajador),
+                expPL: readExperience(perfilLaboral),
+                experienciaFinal: perfil.experiencia,
+              },
+            }
+          : {}),
+      },
+    });
   } catch (error) {
     console.error("Error al obtener perfil público trabajador:", error);
     return res.status(500).json({ error: "Error al obtener perfil público." });
@@ -420,26 +453,12 @@ router.get("/publico/:userId", async (req, res) => {
 router.get("/:id", async (req, res) => {
   try {
     const t = await Trabajador.findByPk(req.params.id, {
-      include: USER_ASSOC
-        ? [
-            {
-              association: USER_ASSOC,
-              attributes: ["id", "nombre", "email", "rol"],
-              required: false,
-            },
-          ]
-        : [
-            {
-              model: User,
-              attributes: ["id", "nombre", "email", "rol"],
-              required: false,
-            },
-          ],
+      include: getIncludeUser(),
     });
 
     if (!t) return res.status(404).json({ error: "Trabajador no encontrado." });
 
-    const u = USER_ASSOC ? t[USER_ASSOC.as] : t.User;
+    const u = getUserFromTrabajador(t);
     const perfil = buildPerfil({ u, t, pl: null });
 
     return res.json({ ok: true, trabajador: perfil });
@@ -455,17 +474,8 @@ router.get("/:id", async (req, res) => {
 // ============================================================
 router.post("/", async (req, res) => {
   try {
-    const {
-      telefono,
-      direccion,
-      ubicacion,
-      categoria,
-      experiencia,
-      descripcion,
-      horario,
-      fotoPerfil,
-      userId,
-    } = req.body;
+    const { telefono, direccion, ubicacion, categoria, experiencia, descripcion, horario, fotoPerfil, userId } =
+      req.body;
 
     if (!userId) {
       return res.status(400).json({ error: "El campo userId es obligatorio." });
@@ -505,7 +515,10 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const trabajador = await Trabajador.findByPk(req.params.id);
-    if (!trabajador) return res.status(404).json({ error: "Trabajador no encontrado." });
+
+    if (!trabajador) {
+      return res.status(404).json({ error: "Trabajador no encontrado." });
+    }
 
     if (req.body.ubicacion && !req.body.direccion) {
       req.body.direccion = req.body.ubicacion;
@@ -535,9 +548,13 @@ router.put("/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     const trabajador = await Trabajador.findByPk(req.params.id);
-    if (!trabajador) return res.status(404).json({ error: "Trabajador no encontrado." });
+
+    if (!trabajador) {
+      return res.status(404).json({ error: "Trabajador no encontrado." });
+    }
 
     await trabajador.destroy();
+
     return res.json({ ok: true, message: "Trabajador eliminado correctamente." });
   } catch (error) {
     console.error("Error al eliminar trabajador:", error);

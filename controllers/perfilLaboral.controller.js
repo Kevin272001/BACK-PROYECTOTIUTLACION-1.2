@@ -87,6 +87,48 @@ exports.crearPerfilLaboral = async (req, res) => {
 };
 
 // =======================================================
+// ✅ SUBIR / REEMPLAZAR récord policial (endpoint dedicado)
+// =======================================================
+exports.subirRecordPolicial = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const perfil = await PerfilLaboral.findOne({ where: { userId } });
+
+    if (!perfil) {
+      return res.status(404).json({ message: "No tienes perfil creado aún" });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        message: "Debes enviar el archivo recordPolicial (PDF/JPG/PNG)",
+      });
+    }
+
+    let recordPolicialUrl = perfil.recordPolicialUrl;
+
+    // ✅ borrar archivo anterior correctamente
+    if (recordPolicialUrl && recordPolicialUrl.startsWith("/uploads/")) {
+      const oldAbs = path.join(__dirname, "..", recordPolicialUrl.replace(/^\/+/, ""));
+      if (fs.existsSync(oldAbs)) fs.unlinkSync(oldAbs);
+    }
+
+    recordPolicialUrl = guardarRecordPolicial(req.file, userId);
+
+    await perfil.update({ recordPolicialUrl });
+
+    return res.json({
+      message: "Récord policial actualizado correctamente",
+      recordPolicialUrl,
+      perfil,
+    });
+  } catch (error) {
+    console.error("❌ Error subiendo récord policial:", error);
+    return res.status(500).json({ message: "Error al subir récord policial" });
+  }
+};
+
+// =======================================================
 // 🔹 2. Obtener perfil del TRABAJADOR logueado
 // =======================================================
 exports.obtenerPerfilDelTrabajador = async (req, res) => {
@@ -146,7 +188,8 @@ exports.actualizarPerfilLaboral = async (req, res) => {
     // Si llega nuevo archivo, reemplazar (y borrar el anterior)
     if (req.file) {
       if (recordPolicialUrl && recordPolicialUrl.startsWith("/uploads/")) {
-        const oldAbs = path.join(__dirname, "..", recordPolicialUrl);
+        // ✅ FIX: antes estabas haciendo path.join con "/uploads..." y no borraba bien
+        const oldAbs = path.join(__dirname, "..", recordPolicialUrl.replace(/^\/+/, ""));
         if (fs.existsSync(oldAbs)) fs.unlinkSync(oldAbs);
       }
       recordPolicialUrl = guardarRecordPolicial(req.file, userId);
