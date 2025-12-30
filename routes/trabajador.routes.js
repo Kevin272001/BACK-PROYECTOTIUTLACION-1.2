@@ -73,7 +73,11 @@ function readExperience(obj) {
   ];
 
   for (const k of keys) {
-    if (obj[k] !== undefined && obj[k] !== null && String(obj[k]).trim() !== "") {
+    if (
+      obj[k] !== undefined &&
+      obj[k] !== null &&
+      String(obj[k]).trim() !== ""
+    ) {
       return years(obj[k], 0);
     }
   }
@@ -93,16 +97,24 @@ function buildPerfil({ u, t, pl }) {
   pl = plain(pl);
 
   const direccion =
-    pick(t || {}, ["direccion", "ubicacion", "direccionCompleta", "address", "location"], "") ||
-    pick(pl || {}, ["direccion", "ubicacion", "direccionCompleta", "address", "location"], "");
+    pick(
+      t || {},
+      ["direccion", "ubicacion", "direccionCompleta", "address", "location"],
+      ""
+    ) ||
+    pick(
+      pl || {},
+      ["direccion", "ubicacion", "direccionCompleta", "address", "location"],
+      ""
+    );
 
   const categoria =
     pick(pl || {}, ["categoria", "profesion", "oficio", "category"], "") ||
     pick(t || {}, ["categoria", "profesion", "oficio", "category"], "");
 
   const telefono =
-    pick(t || {}, ["telefono", "celular", "movil", "phone"], "") ||
-    pick(pl || {}, ["telefono", "celular", "movil", "phone"], "");
+    pick(t || {}, ["telefono", "celular", "phone"], "") ||
+    pick(pl || {}, ["telefono", "celular", "phone"], "");
 
   const expT = readExperience(t);
   const expPL = readExperience(pl);
@@ -125,21 +137,58 @@ function buildPerfil({ u, t, pl }) {
     pick(pl || {}, ["fotoPerfil", "fotoUrl", "foto", "avatarUrl"], "");
 
   const cvUrl =
-    pick(t || {}, ["cvUrl", "cv", "archivoCv", "cvPdfUrl", "pdfCv", "urlCv"], "") ||
-    pick(pl || {}, ["cvUrl", "cv", "archivoCv", "cvPdfUrl", "pdfCv", "urlCv"], "");
-
-  // ✅ NUEVO: Récord Policial
-  const recordPolicialUrl =
-    pick(pl || {}, ["recordPolicialUrl", "record_policial_url", "recordPolicial", "record"], "") ||
-    pick(t || {}, ["recordPolicialUrl", "record_policial_url", "recordPolicial", "record"], "");
+    pick(
+      t || {},
+      ["cvUrl", "cv", "archivoCv", "cvPdfUrl", "pdfCv", "urlCv"],
+      ""
+    ) ||
+    pick(
+      pl || {},
+      ["cvUrl", "cv", "archivoCv", "cvPdfUrl", "pdfCv", "urlCv"],
+      ""
+    );
 
   const descripcion =
     pick(t || {}, ["descripcion", "bio"], "") ||
     pick(pl || {}, ["descripcion", "bio"], "");
 
-  const horario =
-    pick(t || {}, ["horario"], "") ||
-    pick(pl || {}, ["horario"], "");
+  const horario = pick(t || {}, ["horario"], "") || pick(pl || {}, ["horario"], "");
+
+  // ============================================================
+  // ✅ RECORD POLICIAL (AQUÍ ESTABA EL PROBLEMA: NO SE DEVOLVÍA)
+  // ============================================================
+  const recordPolicialUrl =
+    pick(
+      pl || {},
+      [
+        "recordPolicialUrl",
+        "recordPolicial",
+        "recordUrl",
+        "record_policial_url",
+        "recordPolicialPath",
+        "record_path",
+        "recordPath",
+        "rutaRecord",
+        "urlRecord",
+        "qrCuentaUrl", // (por si lo guardaste aquí por error)
+      ],
+      ""
+    ) ||
+    pick(
+      t || {},
+      [
+        "recordPolicialUrl",
+        "recordPolicial",
+        "recordUrl",
+        "record_policial_url",
+        "recordPolicialPath",
+        "record_path",
+        "recordPath",
+        "rutaRecord",
+        "urlRecord",
+      ],
+      ""
+    );
 
   return {
     id: t?.id ?? 0,
@@ -155,49 +204,22 @@ function buildPerfil({ u, t, pl }) {
     fotoPerfil: fotoUrl ?? "",
     cvUrl: cvUrl ?? "",
 
-    // ✅ AQUÍ SE DEVUELVE AL FRONT
-    recordPolicialUrl: recordPolicialUrl ?? "",
-
     descripcion,
     horario,
 
-    // ✅ compat flutter
+    // ✅ NUEVO: RECORD POLICIAL PARA FLUTTER
+    recordPolicialUrl: recordPolicialUrl || "",
+    recordPolicial: recordPolicialUrl || "",
+    recordUrl: recordPolicialUrl || "",
+
+    // ✅ compat flutter (anidado)
     usuario: u ? { id: u.id, nombre: u.nombre, email: u.email, rol: u.rol } : null,
 
-    // extras por compat
+    // ✅ compat flutter (plano)
     nombre: u?.nombre ?? "",
     email: u?.email ?? "",
     rol: u?.rol ?? "",
   };
-}
-
-function getUserFromTrabajador(t) {
-  if (!t) return null;
-  if (USER_ASSOC) return t[USER_ASSOC.as] || null;
-  // fallbacks por si acaso
-  return t.user || t.User || null;
-}
-
-function getIncludeUser() {
-  if (USER_ASSOC) {
-    return [
-      {
-        association: USER_ASSOC,
-        attributes: ["id", "nombre", "email", "rol"],
-        required: false,
-      },
-    ];
-  }
-
-  // fallback si no se detectó asociación (raro)
-  return [
-    {
-      model: User,
-      as: "user",
-      attributes: ["id", "nombre", "email", "rol"],
-      required: false,
-    },
-  ];
 }
 
 // ============================================================
@@ -207,13 +229,27 @@ function getIncludeUser() {
 router.get("/", async (req, res) => {
   try {
     const rows = await Trabajador.findAll({
-      include: getIncludeUser(),
+      include: USER_ASSOC
+        ? [
+            {
+              association: USER_ASSOC,
+              attributes: ["id", "nombre", "email", "rol"],
+              required: false,
+            },
+          ]
+        : [
+            {
+              model: User,
+              attributes: ["id", "nombre", "email", "rol"],
+              required: false,
+            },
+          ],
       order: [["updatedAt", "DESC"]],
       limit: 200,
     });
 
     const salida = rows.map((t) => {
-      const u = getUserFromTrabajador(t);
+      const u = USER_ASSOC ? t[USER_ASSOC.as] : t.User;
       return buildPerfil({ u, t, pl: null });
     });
 
@@ -238,7 +274,9 @@ router.get("/buscar", async (req, res) => {
 
     const categoriaQ = s(categoria, "").trim();
     const expNum =
-      experiencia !== undefined && experiencia !== null && String(experiencia).trim() !== ""
+      experiencia !== undefined &&
+      experiencia !== null &&
+      String(experiencia).trim() !== ""
         ? years(experiencia, 0)
         : null;
 
@@ -281,7 +319,9 @@ router.get("/buscar", async (req, res) => {
       }
 
       const userIdsFinal =
-        userIds.length > 0 ? userIds : trabajadoresById.map((t) => t.userId).filter(Boolean);
+        userIds.length > 0
+          ? userIds
+          : trabajadoresById.map((t) => t.userId).filter(Boolean);
 
       if (userIdsFinal.length === 0) {
         return res.json({
@@ -304,8 +344,12 @@ router.get("/buscar", async (req, res) => {
 
       const userMap = new Map(users.map((u) => [u.id, u]));
       const tMap = new Map(trabajadores.map((t) => [t.userId, t]));
-      const plByUser = new Map(perfiles.filter((pl) => pl.userId).map((pl) => [pl.userId, pl]));
-      const plByTrab = new Map(perfiles.filter((pl) => pl.trabajadorId).map((pl) => [pl.trabajadorId, pl]));
+      const plByUser = new Map(
+        perfiles.filter((pl) => pl.userId).map((pl) => [pl.userId, pl])
+      );
+      const plByTrab = new Map(
+        perfiles.filter((pl) => pl.trabajadorId).map((pl) => [pl.trabajadorId, pl])
+      );
 
       const salida = userIdsFinal
         .map((uid) => {
@@ -330,7 +374,21 @@ router.get("/buscar", async (req, res) => {
     // 2) Sin filtros: traer trabajadores + user (por asociación)
     // =========================================================
     const trabajadoresBase = await Trabajador.findAll({
-      include: getIncludeUser(),
+      include: USER_ASSOC
+        ? [
+            {
+              association: USER_ASSOC,
+              attributes: ["id", "nombre", "email", "rol"],
+              required: false,
+            },
+          ]
+        : [
+            {
+              model: User,
+              attributes: ["id", "nombre", "email", "rol"],
+              required: false,
+            },
+          ],
       limit: 200,
       order: [["updatedAt", "DESC"]],
     });
@@ -344,7 +402,10 @@ router.get("/buscar", async (req, res) => {
 
     try {
       if (userIdsBase.length) {
-        plByUser = await PerfilLaboral.findAll({ where: { userId: userIdsBase }, limit: 400 });
+        plByUser = await PerfilLaboral.findAll({
+          where: { userId: userIdsBase },
+          limit: 400,
+        });
       }
     } catch (_) {
       plByUser = [];
@@ -352,7 +413,10 @@ router.get("/buscar", async (req, res) => {
 
     try {
       if (trabajadorIdsBase.length) {
-        plByTrab = await PerfilLaboral.findAll({ where: { trabajadorId: trabajadorIdsBase }, limit: 400 });
+        plByTrab = await PerfilLaboral.findAll({
+          where: { trabajadorId: trabajadorIdsBase },
+          limit: 400,
+        });
       }
     } catch (_) {
       plByTrab = [];
@@ -363,7 +427,7 @@ router.get("/buscar", async (req, res) => {
 
     const salida = trabajadoresBase.map((t) => {
       const tPlain = plain(t);
-      const u = plain(getUserFromTrabajador(t));
+      const u = USER_ASSOC ? plain(t[USER_ASSOC.as]) : plain(t.User);
       const pl = plUserMap.get(tPlain.userId) || plTrabMap.get(tPlain.id) || null;
       return buildPerfil({ u, t: tPlain, pl });
     });
@@ -409,7 +473,9 @@ router.get("/publico/:userId", async (req, res) => {
 
     if (!perfilLaboral && trabajador?.id) {
       try {
-        perfilLaboral = await PerfilLaboral.findOne({ where: { trabajadorId: trabajador.id } });
+        perfilLaboral = await PerfilLaboral.findOne({
+          where: { trabajadorId: trabajador.id },
+        });
       } catch (_) {
         perfilLaboral = null;
       }
@@ -419,27 +485,13 @@ router.get("/publico/:userId", async (req, res) => {
       return res.status(404).json({ error: "Trabajador no encontrado." });
     }
 
-    const perfil = buildPerfil({ u: user, t: trabajador || null, pl: perfilLaboral || null });
-
-    const debug = String(req.query.debug || "") === "1";
-
-    return res.json({
-      ok: true,
-      perfil: {
-        ...perfil,
-        ...(debug
-          ? {
-              _debugExp: {
-                trabajador: trabajador ? { id: trabajador.id, experiencia: trabajador.experiencia } : null,
-                perfilLaboral: perfilLaboral ? { id: perfilLaboral.id, experiencia: perfilLaboral.experiencia } : null,
-                expT: readExperience(trabajador),
-                expPL: readExperience(perfilLaboral),
-                experienciaFinal: perfil.experiencia,
-              },
-            }
-          : {}),
-      },
+    const perfil = buildPerfil({
+      u: user,
+      t: trabajador || null,
+      pl: perfilLaboral || null,
     });
+
+    return res.json({ ok: true, perfil });
   } catch (error) {
     console.error("Error al obtener perfil público trabajador:", error);
     return res.status(500).json({ error: "Error al obtener perfil público." });
@@ -453,12 +505,26 @@ router.get("/publico/:userId", async (req, res) => {
 router.get("/:id", async (req, res) => {
   try {
     const t = await Trabajador.findByPk(req.params.id, {
-      include: getIncludeUser(),
+      include: USER_ASSOC
+        ? [
+            {
+              association: USER_ASSOC,
+              attributes: ["id", "nombre", "email", "rol"],
+              required: false,
+            },
+          ]
+        : [
+            {
+              model: User,
+              attributes: ["id", "nombre", "email", "rol"],
+              required: false,
+            },
+          ],
     });
 
     if (!t) return res.status(404).json({ error: "Trabajador no encontrado." });
 
-    const u = getUserFromTrabajador(t);
+    const u = USER_ASSOC ? t[USER_ASSOC.as] : t.User;
     const perfil = buildPerfil({ u, t, pl: null });
 
     return res.json({ ok: true, trabajador: perfil });
@@ -474,8 +540,17 @@ router.get("/:id", async (req, res) => {
 // ============================================================
 router.post("/", async (req, res) => {
   try {
-    const { telefono, direccion, ubicacion, categoria, experiencia, descripcion, horario, fotoPerfil, userId } =
-      req.body;
+    const {
+      telefono,
+      direccion,
+      ubicacion,
+      categoria,
+      experiencia,
+      descripcion,
+      horario,
+      fotoPerfil,
+      userId,
+    } = req.body;
 
     if (!userId) {
       return res.status(400).json({ error: "El campo userId es obligatorio." });
@@ -515,10 +590,8 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const trabajador = await Trabajador.findByPk(req.params.id);
-
-    if (!trabajador) {
+    if (!trabajador)
       return res.status(404).json({ error: "Trabajador no encontrado." });
-    }
 
     if (req.body.ubicacion && !req.body.direccion) {
       req.body.direccion = req.body.ubicacion;
@@ -548,13 +621,10 @@ router.put("/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     const trabajador = await Trabajador.findByPk(req.params.id);
-
-    if (!trabajador) {
+    if (!trabajador)
       return res.status(404).json({ error: "Trabajador no encontrado." });
-    }
 
     await trabajador.destroy();
-
     return res.json({ ok: true, message: "Trabajador eliminado correctamente." });
   } catch (error) {
     console.error("Error al eliminar trabajador:", error);
