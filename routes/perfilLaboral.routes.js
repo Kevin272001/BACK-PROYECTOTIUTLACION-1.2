@@ -5,41 +5,49 @@ const router = express.Router();
 
 const perfilController = require("../controllers/perfilLaboral.controller");
 const authMiddleware = require("../middlewares/auth");
-
-// ✅ multer SOLO para subir archivo de récord policial
 const uploadRecord = require("../middlewares/uploadRecordPolicial");
 
+// ✅ SOLO usa multer si el request es multipart/form-data
+function maybeUploadRecord(req, res, next) {
+  const ct = req.headers["content-type"] || "";
+  if (ct.includes("multipart/form-data")) {
+    return uploadRecord.single("recordPolicial")(req, res, next);
+  }
+  return next();
+}
+
 // ===============================================================
-// 🔹 CREAR perfil laboral (TRABAJADOR) - JSON normal (NO ROMPE)
+// 🔹 CREAR perfil laboral (TRABAJADOR)
 // POST /api/perfil-laboral
-// body: JSON (sin archivo)
+// ✅ Acepta:
+// - JSON (recomendado)
+// - multipart (si algún día quieres enviar file aquí)
 // ===============================================================
-router.post("/", authMiddleware, perfilController.crearPerfilLaboral);
+router.post("/", authMiddleware, maybeUploadRecord, perfilController.crearPerfilLaboral);
 
 // ===============================================================
 // 🔹 Verificar si ya tiene perfil (USADO POR FLUTTER)
-// ✅ OJO: tu controller responde { exists: true/false }
 // GET /api/perfil-laboral/mine
 // ===============================================================
 router.get("/mine", authMiddleware, perfilController.verificarPerfilExistente);
 
 // ===============================================================
-// 🔹 Obtener MI perfil laboral (del trabajador autenticado)
+// 🔹 Obtener MI perfil laboral
 // GET /api/perfil-laboral
 // ===============================================================
 router.get("/", authMiddleware, perfilController.obtenerPerfilDelTrabajador);
 
 // ===============================================================
-// 🔹 ACTUALIZAR perfil laboral - JSON normal (NO ROMPE)
+// 🔹 Actualizar perfil laboral
 // PUT /api/perfil-laboral
-// body: JSON (sin archivo)
+// ✅ Acepta JSON normal también
 // ===============================================================
-router.put("/", authMiddleware, perfilController.actualizarPerfilLaboral);
+router.put("/", authMiddleware, maybeUploadRecord, perfilController.actualizarPerfilLaboral);
 
 // ===============================================================
-// ✅ SUBIR / REEMPLAZAR RÉCORD POLICIAL (archivo)
+// ✅ SUBIR / REEMPLAZAR RÉCORD POLICIAL (RECOMENDADO)
 // POST /api/perfil-laboral/record
-// form-data: recordPolicial (file)
+// multipart/form-data: recordPolicial(file)
 // ===============================================================
 router.post(
   "/record",
@@ -49,7 +57,7 @@ router.post(
 );
 
 // ===============================================================
-// 🔹 Obtener TODOS los perfiles laborales de trabajadores
+// 🔹 Obtener TODOS los perfiles laborales
 // GET /api/perfil-laboral/todos
 // ===============================================================
 router.get("/todos", perfilController.obtenerTodosPerfilesLaborales);
